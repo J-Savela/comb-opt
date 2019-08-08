@@ -2,6 +2,7 @@
 # Input as an edge list.
 # Output the number of colors.
 from pyscipopt import Model
+import pyscipopt
 
 
 # Reads dimacs graph
@@ -14,7 +15,7 @@ def read_dimacs(filename):
             if len(row) > 0 and row[0] == 'p':
                 header = row[:(len(row)-1)]
                 break
-        vCount = header.split(' ')[2]
+        vCount = int(header.split(' ')[2])
         vertices = set(range(1, vCount + 1))
         degrees = dict(map(lambda x: (x, 0), vertices))
         edgelist = []
@@ -36,12 +37,14 @@ def read_dimacs(filename):
 
 
 # Standard assignment based model (Equations 1-4)
-def coloring_AS(vertices, maxDeg, edgelist):
+def coloring_AS(vertices, maxDeg, edgelist, presolving=True):
     max_color = maxDeg + 1
     colors = set(range(1, max_color + 1))
 
     # Create model and add variables
     model = Model()
+    if not presolving:
+        model.setPresolve(pyscipopt.SCIP_PARAMSETTING.OFF)
     var_x = dict(map(lambda x: (x, None), {(v, i) for v in vertices for i in colors}))
     var_w = dict(map(lambda x: (x, None), colors))
     for k in var_x.keys():
@@ -49,11 +52,11 @@ def coloring_AS(vertices, maxDeg, edgelist):
     for k in var_w.keys():
         var_w[k] = model.addVar(name=f"w({k})", vtype="I", lb=0, ub=1)
 
-    var_x_by_vertex = dict(map(lambda x: (x, set()), vertices))
-    var_x_by_color = dict(map(lambda x: (x, set()), colors))
+    var_x_by_vertex = dict(map(lambda x: (x, []), vertices))
+    var_x_by_color = dict(map(lambda x: (x, []), colors))
     for k, v in var_x.items():
-        var_x_by_vertex[k[0]].add(v)
-        var_x_by_color[k[1]].add(v)
+        var_x_by_vertex[k[0]].append(v)
+        var_x_by_color[k[1]].append(v)
 
     # Set objective
     # Equation 1
@@ -73,16 +76,21 @@ def coloring_AS(vertices, maxDeg, edgelist):
 
     model.hideOutput()
     model.optimize()
-    return f"result: {model.getStatus()}\nobjective: {model.getObjVal()}"
+    out = f"result: {model.getStatus()}\n"
+    if model.getStatus() == "optimal":
+        out += f"objective: {model.getObjVal()}"
+    return out
 
 
 # Standard assignment based model with symmetry breaking (Equations 1-6)
-def coloring_ASSB(vertices, maxDeg, edgelist):
+def coloring_ASSB(vertices, maxDeg, edgelist, presolving=True):
     max_color = maxDeg + 1
     colors = set(range(1, max_color + 1))
 
     # Create model and add variables
     model = Model()
+    if not presolving:
+        model.setPresolve(pyscipopt.SCIP_PARAMSETTING.OFF)
     var_x = dict(map(lambda x: (x, None), {(v, i) for v in vertices for i in colors}))
     var_w = dict(map(lambda x: (x, None), colors))
     for k in var_x.keys():
@@ -90,11 +98,11 @@ def coloring_ASSB(vertices, maxDeg, edgelist):
     for k in var_w.keys():
         var_w[k] = model.addVar(name=f"w({k})", vtype="I", lb=0, ub=1)
 
-    var_x_by_vertex = dict(map(lambda x: (x, set()), vertices))
-    var_x_by_color = dict(map(lambda x: (x, set()), colors))
+    var_x_by_vertex = dict(map(lambda x: (x, []), vertices))
+    var_x_by_color = dict(map(lambda x: (x, []), colors))
     for k, v in var_x.items():
-        var_x_by_vertex[k[0]].add(v)
-        var_x_by_color[k[1]].add(v)
+        var_x_by_vertex[k[0]].append(v)
+        var_x_by_color[k[1]].append(v)
 
     # Set objective
     # Equation 1
@@ -122,16 +130,21 @@ def coloring_ASSB(vertices, maxDeg, edgelist):
 
     model.hideOutput()
     model.optimize()
-    return f"result: {model.getStatus()}\nobjective: {model.getObjVal()}"
+    out = f"result: {model.getStatus()}\n"
+    if model.getStatus() == "optimal":
+        out += f"objective: {model.getObjVal()}"
+    return out
 
 
 # Partial order based model (Equations 7-14)
-def coloring_PO(vertices, maxDeg, edgelist):
+def coloring_PO(vertices, maxDeg, edgelist, presolving=True):
     max_color = maxDeg + 1
     colors = set(range(1, max_color + 1))
 
     # Create model and add variables
     model = Model()
+    if not presolving:
+        model.setPresolve(pyscipopt.SCIP_PARAMSETTING.OFF)
     pairs = {(v, i) for v in vertices for i in colors}
     var_g = dict(map(lambda x: (x, None), pairs))
     var_l = dict(map(lambda x: (x, None), pairs))
@@ -142,7 +155,7 @@ def coloring_PO(vertices, maxDeg, edgelist):
     # Set objective
     # Equation 7
     vertex_w = 1
-    variables = set(map(lambda i: var_g[(vertex_w, i)], colors))
+    variables = list(map(lambda i: var_g[(vertex_w, i)], colors))
     model.setObjective(1 + sum(variables), "minimize")
 
     # Add constraints
@@ -167,16 +180,21 @@ def coloring_PO(vertices, maxDeg, edgelist):
 
     model.hideOutput()
     model.optimize()
-    return f"result: {model.getStatus()}\nobjective: {model.getObjVal()}"
+    out = f"result: {model.getStatus()}\n"
+    if model.getStatus() == "optimal":
+        out += f"objective: {model.getObjVal()}"
+    return out
 
 
 # Partial order based model (Equations 7-11, 13-16)
-def coloring_POST(vertices, maxDeg, edgelist):
+def coloring_POST(vertices, maxDeg, edgelist, presolving=True):
     max_color = maxDeg + 1
     colors = set(range(1, max_color + 1))
 
     # Create model and add variables
     model = Model()
+    if not presolving:
+        model.setPresolve(pyscipopt.SCIP_PARAMSETTING.OFF)
     pairs = {(v, i) for v in vertices for i in colors}
     var_x = dict(map(lambda x: (x, None), pairs))
     var_g = dict(map(lambda x: (x, None), pairs))
@@ -189,7 +207,7 @@ def coloring_POST(vertices, maxDeg, edgelist):
     # Set objective
     # Equation 7
     vertex_w = 1
-    variables = set(map(lambda i: var_g[(vertex_w, i)], colors))
+    variables = list(map(lambda i: var_g[(vertex_w, i)], colors))
     model.setObjective(1 + sum(variables), "minimize")
 
     # Add constraints
@@ -216,6 +234,9 @@ def coloring_POST(vertices, maxDeg, edgelist):
 
     model.hideOutput()
     model.optimize()
-    return f"result: {model.getStatus()}\nobjective: {model.getObjVal()}"
+    out = f"result: {model.getStatus()}\n"
+    if model.getStatus() == "optimal":
+        out += f"objective: {model.getObjVal()}"
+    return out
 
 
